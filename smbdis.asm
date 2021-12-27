@@ -1541,6 +1541,13 @@ PortLoop:     pha                    ;push previous bit onto stack
               rol                    ;rotate bit from carry flag
               dey
               bne PortLoop           ;count down bits left
+			  
+			  pha
+			  and #%00001111
+			  tay
+			  pla
+			  and MaskLPlusR,y
+			  
               sta SavedJoypadBits,x  ;save controller status here always
               pha
               and #%00110000         ;check for select or start
@@ -1553,6 +1560,8 @@ PortLoop:     pha                    ;push previous bit onto stack
 Save8Bits:    pla
               sta JoypadBitMask,x    ;save with all bits in another place and leave
               rts
+			  
+MaskLPlusR:	.byte $f0, $f1, $f2, $f0, $f4, $f5, $f6, $f4, $f8, $f9, $fA, $f8, $f0, $f1, $f2, $f0
 
 ;-------------------------------------------------------------------------------------
 ;$00 - vram buffer address table low
