@@ -1542,11 +1542,21 @@ PortLoop:     pha                    ;push previous bit onto stack
               dey
               bne PortLoop           ;count down bits left
 			  
-			  pha
+			  pha	;mizu
 			  and #%00001111
 			  tay
 			  pla
 			  and MaskLPlusR,y
+			  pha
+			  lda MyJoypadHeld,x
+			  eor #$ff
+			  sta $01
+			  pla
+			  sta MyJoypadHeld,x
+			  pha
+			  and $01
+			  sta MyJoypadPressed,x
+			  pla
 			  
               sta SavedJoypadBits,x  ;save controller status here always
               pha
@@ -1559,9 +1569,9 @@ PortLoop:     pha                    ;push previous bit onto stack
               rts
 Save8Bits:    pla
               sta JoypadBitMask,x    ;save with all bits in another place and leave
-              rts
+			  rts
 			  
-MaskLPlusR:	.byte $f0, $f1, $f2, $f0, $f4, $f5, $f6, $f4, $f8, $f9, $fA, $f8, $f0, $f1, $f2, $f0
+MaskLPlusR:	.byte $f0, $f1, $f2, $f0, $f4, $f5, $f6, $f4, $f8, $f9, $fA, $f8, $f0, $f1, $f2, $f0	;mizu
 
 ;-------------------------------------------------------------------------------------
 ;$00 - vram buffer address table low
@@ -3588,8 +3598,8 @@ GameMode:
 
 GameCoreRoutine:
       ldx CurrentPlayer          ;get which player is on the screen
-      lda SavedJoypadBits,x      ;use appropriate player's controller bits
-      sta SavedJoypadBits        ;as the master controller bits
+      ;lda SavedJoypadBits,x      ;use appropriate player's controller bits
+      ;sta SavedJoypadBits        ;as the master controller bits
       jsr GameRoutines           ;execute one of many possible subs
       lda OperMode_Task          ;check major task of operating mode
       cmp #$03                   ;if we are supposed to be here,
@@ -3866,15 +3876,15 @@ SaveJoyp:   lda SavedJoypadBits         ;otherwise store A and B buttons in $0a
             lda SavedJoypadBits         ;store up and down buttons in $0b
             and #%00001100
             sta Up_Down_Buttons
-            and #%00000100              ;check for pressing down
-            beq SizeChk                 ;if not, branch
-            lda Player_State            ;check player's state
-            bne SizeChk                 ;if not on the ground, branch
-            ldy Left_Right_Buttons      ;check left and right
-            beq SizeChk                 ;if neither pressed, branch
-            lda #$00
-            sta Left_Right_Buttons      ;if pressing down while on the ground,
-            sta Up_Down_Buttons         ;nullify directional bits
+            ;and #%00000100              ;check for pressing down
+            ;beq SizeChk                 ;if not, branch
+            ;lda Player_State            ;check player's state
+            ;bne SizeChk                 ;if not on the ground, branch
+            ;ldy Left_Right_Buttons      ;check left and right
+            ;beq SizeChk                 ;if neither pressed, branch
+            ;lda #$00
+            ;sta Left_Right_Buttons      ;if pressing down while on the ground,
+            ;sta Up_Down_Buttons         ;nullify directional bits
 SizeChk:    jsr PlayerMovementSubs      ;run movement subroutines
             ldy #$01                    ;is player small?
             lda PlayerSize
@@ -4159,10 +4169,12 @@ ExitNA:   rts
 
 ;-------------------------------------------------------------------------------------
 
+.include "PlayerMovementSubs.asm"
+.if 0	;mizu
 PlayerMovementSubs:
-           lda #$00                  ;set A to init crouch flag by default
-           ldy PlayerSize            ;is player small?
-           bne SetCrouch             ;if so, branch
+           ;lda #$00                  ;set A to init crouch flag by default
+           ;ldy PlayerSize            ;is player small?
+           ;bne SetCrouch             ;if so, branch
            lda Player_State          ;check state of player
            bne ProcMove              ;if not on the ground, branch
            lda Up_Down_Buttons       ;load controller bits for up and down
@@ -4243,7 +4255,7 @@ JSMove:   jsr MovePlayerHorizontally ;do a sub to move player horizontally
           lda #$28
           sta VerticalForce          ;otherwise set fractional
 ExitMov1: jmp MovePlayerVertically   ;jump to move player vertically, then leave
-
+.endif	;mizu
 ;--------------------------------
 
 ClimbAdderLow:
@@ -4298,25 +4310,25 @@ InitCSTimer: sta ClimbSideTimer       ;initialize timer here
 
 ;-------------------------------------------------------------------------------------
 ;$00 - used to store offset to friction data
-
+;mizu
 JumpMForceData:
-      .byte $20, $20, $1e, $28, $28, $0d, $04
+      ;.byte $20, $20, $1e, $28, $28, $0d, $04
 
 FallMForceData:
-      .byte $70, $70, $60, $90, $90, $0a, $09
+      ;.byte $70, $70, $60, $90, $90, $0a, $09
 
 PlayerYSpdData:
-      .byte $fc, $fc, $fc, $fb, $fb, $fe, $ff
+      ;.byte $fc, $fc, $fc, $fb, $fb, $fe, $ff
 
 InitMForceData:
-      .byte $00, $00, $00, $00, $00, $80, $00
+      ;.byte $00, $00, $00, $00, $00, $80, $00
 
 MaxLeftXSpdData:
-      .byte $d8, $e8, $f0
+      ;.byte $d8, $e8, $f0
 
 MaxRightXSpdData:
-      .byte $28, $18, $10
-      .byte $0c ;used for pipe intros
+      ;.byte $28, $18, $10
+      ;.byte $0c ;used for pipe intros
 
 FrictionData:
       .byte $e4, $98, $d0
@@ -4359,7 +4371,7 @@ CheckForJumping:
         beq ProcJumping
 NoJump: jmp X_Physics             ;otherwise, jump to something else
 
-ProcJumping:
+ProcJumping:.if 0	;mizu
            lda Player_State           ;check player state
            beq InitJS                 ;if on the ground, branch
            lda SwimmingFlag           ;if swimming flag not set, jump to do something else
@@ -4424,6 +4436,7 @@ PJumpSnd:  lda #Sfx_BigJump           ;load big mario's jump sound by default
            beq SJumpSnd
            lda #Sfx_SmallJump         ;if not, load small mario's jump sound
 SJumpSnd:  sta Square1SoundQueue      ;store appropriate jump sound in square 1 sfx queue
+.endif	;mizu
 X_Physics: ldy #$00
            sty $00                    ;init value here
            lda Player_State           ;if mario is on the ground, branch
@@ -4474,7 +4487,7 @@ GetXPhy2:  lda MaxRightXSpdData,y     ;get maximum speed to the right
            asl FrictionAdderLow       ;otherwise shift d7 of friction adder low into carry
            rol FrictionAdderHigh      ;then rotate carry onto d0 of friction adder high
 ExitPhy:   rts                        ;and then leave
-
+;.endif
 ;-------------------------------------------------------------------------------------
 
 PlayerAnimTmrData:
@@ -4489,23 +4502,26 @@ GetPlayerAnimSpeed:
             cmp #$0e                   ;compare against lower amount
             bcs ChkSkid                ;if greater than this but not greater than first, skip increment
             iny                        ;otherwise increment Y again
-ChkSkid:    lda SavedJoypadBits        ;get controller bits
-            and #%01111111             ;mask out A button
-            beq SetAnimSpd             ;if no other buttons pressed, branch ahead of all this
-            and #$03                   ;mask out all others except left and right
-            cmp Player_MovingDir       ;check against moving direction
-            bne ProcSkid               ;if left/right controller bits <> moving direction, branch
-            lda #$00                   ;otherwise set zero value here
-SetRunSpd:  sta RunningSpeed           ;store zero or running speed here
-            jmp SetAnimSpd
-ProcSkid:   lda Player_XSpeedAbsolute  ;check player's walking/running speed
-            cmp #$0b                   ;against one last amount
-            bcs SetAnimSpd             ;if greater than this amount, branch
-            lda PlayerFacingDir
-            sta Player_MovingDir       ;otherwise use facing direction to set moving direction
-            lda #$00
-            sta Player_X_Speed         ;nullify player's horizontal speed
-            sta Player_X_MoveForce     ;and dummy variable for player
+			
+			;mizu: insta stop is dumb
+ChkSkid:    ;lda SavedJoypadBits        ;get controller bits
+            ;and #%01111111             ;mask out A button
+            ;beq SetAnimSpd             ;if no other buttons pressed, branch ahead of all this
+            ;and #$03                   ;mask out all others except left and right
+            ;cmp Player_MovingDir       ;check against moving direction
+            ;bne ProcSkid               ;if left/right controller bits <> moving direction, branch
+            ;lda #$00                   ;otherwise set zero value here
+SetRunSpd:  ;sta RunningSpeed           ;store zero or running speed here
+            ;jmp SetAnimSpd
+ProcSkid:   ;lda Player_XSpeedAbsolute  ;check player's walking/running speed
+            ;cmp #$0b                   ;against one last amount
+            ;bcs SetAnimSpd             ;if greater than this amount, branch
+            ;lda PlayerFacingDir
+            ;sta Player_MovingDir       ;otherwise use facing direction to set moving direction
+            ;lda #$00
+            ;sta Player_X_Speed         ;nullify player's horizontal speed
+            ;sta Player_X_MoveForce     ;and dummy variable for player
+			
 SetAnimSpd: lda PlayerAnimTmrData,y    ;get animation timer setting using Y as offset
             sta PlayerAnimTimerSet
             rts
@@ -4574,12 +4590,17 @@ ProcFireball_Bubble:
       bne ProcFireballs          ;if not inactive, branch
       ldy Player_Y_HighPos       ;if player too high or too low, branch
       dey
-      bne ProcFireballs
+      bne ProcFireballs			 ;todo: check for new states player is unable to fireball
       lda CrouchingFlag          ;if player crouching, branch
       bne ProcFireballs
       lda Player_State           ;if player's state = climbing, branch
       cmp #$03
       beq ProcFireballs
+	  
+	  lda Left_Right_Buttons
+	  beq @Skip
+	  sta PlayerFacingDir
+@Skip:
       lda #Sfx_Fireball          ;play fireball sound effect
       sta Square1SoundQueue
       lda #$02                   ;load state
@@ -13343,6 +13364,10 @@ World5Areas: .byte $2a, $31, $26, $62
 World6Areas: .byte $2e, $23, $2d, $60
 World7Areas: .byte $33, $29, $01, $27, $64
 World8Areas: .byte $30, $32, $21, $65
+
+;.repeat 21
+;	.byte $ff
+;.endrepeat
 
 ;-------------------------------------------------------------------------------------
 ; With the MMC3, $E000-$FFFF is always the last 8 kilobytes of ROM

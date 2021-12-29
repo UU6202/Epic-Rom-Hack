@@ -47,9 +47,11 @@ ObjectOffset          = $08
 
 FrameCounter          = $09
 
-SavedJoypadBits       = $06fc
-SavedJoypad1Bits      = $06fc
-SavedJoypad2Bits      = $06fd
+SavedJoypadBits       = $3c
+SavedJoypad1Bits      = $3c
+SavedJoypad2Bits      = $3d
+MyJoypadHeld		  = $4c
+MyJoypadPressed		  = $50
 JoypadBitMask         = $074a
 JoypadOverride        = $0758
 
