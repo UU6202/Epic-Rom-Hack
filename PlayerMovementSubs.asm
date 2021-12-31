@@ -12,13 +12,17 @@ PlayerMovementSubs:
 	lda MyJoypadHeld,x
 	and #Left_Dir|Right_Dir
 	tay
+	beq @ZeroAndNeutral
 	lda #$00
 	bpl @SetSpeedAndDir
+@ZeroAndNeutral:
+	lda #$01
+	iny
 @NotZeroSpeed:
-	bpl @SetSpeedAndDir
+	bpl @SetSpeedAndDir	;bra for zero and neutral
 	eor #$ff
 	clc
-	adc #$00
+	adc #$01
 	iny
 @SetSpeedAndDir:
 	sta Player_XSpeedAbsolute
@@ -204,6 +208,10 @@ ChkDive:
 	lda MyJoypadHeld,x
 	and #Down_Dir
 	beq @NotDive
+	
+	lda PlayerFacingDir,x	;dive in facing dir!
+	sta Player_MovingDir,x
+	
 	lda AreaType	;todo: check state/tile instead of area type
 	beq @Underwater	;0 -> underwater
 	lda #StateDive
@@ -217,6 +225,10 @@ ChkDive:
 	rts
 	
 StateSubGPReady:
+	lda MyJoypadHeld,x
+	beq @Neutral
+	sta PlayerFacingDir,x
+@Neutral:
 	jsr ChkDive
 	;no cancel during ready
 	dec GPTmr,x
@@ -396,6 +408,7 @@ AccelByData:
 	adc #>(-WaterFriction)
 
 @NotWater:
+	ldy Player_State,x
 	clc	;speed += accel
 	adc Player_XSpeedAbsolute
 	cmp HardCapXData,y	;min(x speed, x hard cap)
@@ -437,7 +450,7 @@ AccelByData:
 	lda HardCapYData,y
 @NotHardexceed:
 
-	;sta Player_Y_Speed_Exag,x
+	sta Player_Y_Speed_Exag,x	;debugging purposes
 	lsr
 	ror Player_Y_MoveForce,x
 	lsr
@@ -448,16 +461,16 @@ AccelByData:
 	ror Player_Y_MoveForce,x
 	cmp #$08
 	bmi @Positive
-	eor #$f0
+	ora #$f0
 @Positive:
 	sta Player_Y_Speed,x
 	
 	jsr MovePlayerHorizontally
 	sta Player_X_Scroll
-	lda #$00
-	sta $00
 	lda #$05
 	sta $02
+	lda #$00
+	sta $00
 	jmp ImposeGravity
 	
 LSRs:
@@ -519,7 +532,7 @@ SetYData:
 AccelYData:
 	.byte 0, 2, 9, vvv, 1, 1, 4, 1, 2, 10, 0, 4, 8, 256-4, 0, 8, 0
 AccelYSubData:	;just for keeping the original jump height!
-	.byte 0, 128, 0, vvv, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+	.byte 0, 0, 0, vvv, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0	;AccelYSubData[1]=128
 SoftCapYData:
 	.byte 0, 64, 64, vvv, 32, 48, 64, 48, 0, 80, 0, 64, 64, 32, 0, 64, 0
 HardCapYData:
