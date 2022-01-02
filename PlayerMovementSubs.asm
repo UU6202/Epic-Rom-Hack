@@ -1,9 +1,10 @@
 GPTmr = $07a3
 GPLandTmr = $07a3	;share, since they do not happen at the same time
-Player_Y_Speed_Exag = $54
+DiveLandTmr = $07a3
+;Player_Y_Speed_Exag = $54
 Multiple_Jump_Ctr = $07e3
-Multiple_Jump_Tmr = $07a5
 WaterFriction = $0040
+OnGroundTmr = $07a5
 
 PlayerMovementSubs:
 	ldy #$01
@@ -16,8 +17,8 @@ PlayerMovementSubs:
 	lda #$00
 	bpl @SetSpeedAndDir
 @ZeroAndNeutral:
-	lda #$01
-	iny
+	lda #$00
+	ldy Player_MovingDir,x
 @NotZeroSpeed:
 	bpl @SetSpeedAndDir	;bra for zero and neutral
 	eor #$ff
@@ -27,17 +28,19 @@ PlayerMovementSubs:
 @SetSpeedAndDir:
 	sta Player_XSpeedAbsolute
 	sty Player_MovingDir,x
-	lda Player_Y_Speed,x
-	sta Player_Y_Speed_Exag,x
-	lda Player_Y_MoveForce,x
-	asl
-	rol Player_Y_Speed_Exag,x
-	asl
-	rol Player_Y_Speed_Exag,x
-	asl
-	rol Player_Y_Speed_Exag,x
-	asl
-	rol Player_Y_Speed_Exag,x
+	;lda Player_Y_Speed,x
+	;php	;save the sign as y speed exag might overflow
+	;sta Player_Y_Speed_Exag,x
+	;lda Player_Y_MoveForce,x
+	;asl
+	;rol Player_Y_Speed_Exag,x
+	;asl
+	;rol Player_Y_Speed_Exag,x
+	;asl
+	;rol Player_Y_Speed_Exag,x
+	;asl
+	;rol Player_Y_Speed_Exag,x
+	;ror YSpeedBit9	;in case of overflow! this stores the sign
 	
 	lda #>(AccelByData-1)	;rts -> jmp AccelByData
 	pha
@@ -62,6 +65,7 @@ PlayerMovementSubs:
 	.word StateSubUnderwaterGPFade
 	.word StateSubUnderwaterGPLand
 	.word StateSubDive
+	.word StateSubDiveLand
 	.word StateSubUnderwaterDive
 	.word StateSubWallSlide
 	
@@ -81,10 +85,13 @@ StateUnderwaterGP = 12
 StateUnderwaterGPFade = 13
 StateUnderwaterGPLand = 14
 StateDive = 15
-StateUnderwaterDive = 16
-StateWallSlide = 17
+StateDiveLand = 16
+StateUnderwaterDive = 17
+StateWallSlide = 18
 
 StateSubNormal:
+
+
 	;todo jsr check tile above player
 	lda MyJoypadHeld,x
 	and #Down_Dir
@@ -92,7 +99,7 @@ StateSubNormal:
 	inc CrouchingFlag,x	;now as a counter instead of always holding %00000100
 	bne @UncrouchEnd	;bra
 	lda #$ff	;except overflowed! $00->$ff
-@Uncrouch:
+@Uncrouch:	;todo: reset CrouchingFlag when landing so that unconsecutive crouches can be differed
 	sta CrouchingFlag,x
 @UncrouchEnd:
 	
@@ -119,8 +126,21 @@ StateSubNormal:
 	jmp NewStateY
 	
 @NotCrouch:
-	dec Multiple_Jump_Tmr,x	;not crouch => triple jump
-	beq @FailTriple
+	lda OnGroundTmr,x	;not crouch => triple jump
+	cmp #$09
+	bcs @FailTriple
+	lda Player_XSpeedAbsolute,x
+	lsr
+	lsr
+	lsr
+	lsr
+	clc
+	adc #$ff
+	cmp Multiple_Jump_Ctr,x	;double jump requires 16 x speed
+	bmi @FailTriple	;triple jump requires 32 x speed
+	lda Multiple_Jump_Ctr,x
+	cmp #$02
+	bcs @FailTriple	;if last one was triple, reset
 	inc Multiple_Jump_Ctr,x
 	bpl @SetJump	;bra
 @NotBackflip:	;is crouch jump => reset multiple jump ctr
@@ -157,11 +177,16 @@ ChkGP:
 	rts
 	
 StateSubJumping:
+	lda MyJoypadHeld,x
+	and #A_Button
+	bne @Held
+	inc Player_State,x	;state -> falling
+@Held:
 StateSubBackflip:
 StateSubGPJump:
 	jsr ChkGP
 	
-	lda Player_Y_Speed_Exag,x
+	lda Player_Y_Speed,x
 	bmi @NotFalling
 	lda #StateFalling	;Y speed >= 0 => falling
 	sta Player_State,x
@@ -170,6 +195,8 @@ StateSubGPJump:
 	
 StateSubFalling:
 StateSubFloating:
+	lda #$00
+	sta OnGroundTmr,x
 	jsr ChkGP
 	;todo
 	;ldy #StateFalling
@@ -220,12 +247,14 @@ ChkDive:
 	lda #StateUnderwaterDive
 @SetState:
 	sta Player_State,x
-	jmp NewStateX
+	jsr NewStateX
+	jmp NewStateY
 @NotDive:
 	rts
 	
 StateSubGPReady:
 	lda MyJoypadHeld,x
+	and #Left_Dir|Right_Dir
 	beq @Neutral
 	sta PlayerFacingDir,x
 @Neutral:
@@ -283,10 +312,10 @@ StateSubUnderwaterGP:
 	rts
 	
 StateSubUnderwaterGPFade:
-	ldy Player_Y_Speed_Exag
-	dey
-	bne @NotExitUGPFade
-	lda #StateSwimming
+	ldy Player_Y_Speed	;if y speed < 2
+	cpy #$02
+	bmi @NotExitUGPFade
+	lda #StateSwimming	;finish the fade
 	sta Player_State,x
 @NotExitUGPFade:
 	rts
@@ -307,6 +336,35 @@ StateSubUnderwaterDive:
 	sta Player_State,x
 	jmp StateSubSwimming
 @NotCancel:
+	rts
+	
+StateSubDiveLand:
+	lda MyJoypadPressed,x
+	and #A_Button
+	beq @NotJump
+	lda MyJoypadHeld,x	;A button pressed
+	and #Down_Dir
+	beq @NotLJ
+	lda Player_XSpeedAbsolute	;is crouch => either backflip, crouch jump or long jump
+	cmp #$24	;lj speed threshold
+	bmi @NotLJ
+	lda #StateLJ	;is lj
+	sta Player_State,x	;update state
+	jmp NewStateY
+	
+@NotLJ:	;normal jump, a = 0
+	sta Multiple_Jump_Ctr,x
+	lda #StateJumping
+	sta Player_State,x	;update state
+	jsr NewStateY
+	jmp NewStateYFromX
+
+@NotJump:
+	dec DiveLandTmr,x
+	bne @NotExitDiveLand
+	lda #StateNormal
+	sta Player_State,x
+@NotExitDiveLand:
 	rts
 	
 StateSubWallSlide:
@@ -336,28 +394,40 @@ NewStateX:
 	sta Player_XSpeedAbsolute
 	rts
 	
+NewStateY:
+	lda #$00
+	sta OnGroundTmr,x
+	ldy Player_State,x
+	lda SetYHighData,y
+	sta Player_Y_Speed,x
+	lda SetYLowData,y
+	sta Player_Y_MoveForce,x
+	rts
+	
 NewStateYFromX:	;adds X speed / 4 to initial Y speed as bonus
 	lda Player_XSpeedAbsolute
-	lsr	;/4
-	lsr
+	asl	;*4
+	asl
 	sta $00
 	lda Multiple_Jump_Ctr,x
-	asl	;*4
-	asl	;and clc
-	adc $00	;double jump => +4, triple jump => +8 (can reach 6+3/16 blocks high with 40 x speed)
-	eor #$ff	;neg (negative is upwards)
+	ror	;*64
+	ror
+	ror	;and clc
+	adc $00	;double jump => +64, triple jump => +128 (can reach 6+3/16 blocks high with 40 x speed)
+	sta $00
+	lda Player_Y_MoveForce,x
 	sec	;the ++ here
-	adc Player_Y_Speed_Exag,x	;+ Y speed
-	sta Player_Y_Speed_Exag,x
-	rts
-	
-NewStateY:
-	ldy Player_State,x
-	lda SetYData,y
-	sta Player_Y_Speed_Exag,x
-	rts
+	sbc $00
+	sta Player_Y_MoveForce,x
+	lda Player_Y_Speed,x
+	sbc #$00
+	sta Player_Y_Speed,x
+	;rts
+	pla
+	pla
 	
 AccelByData:
+
 	clv ;bvc->bra
 	ldy Player_State,x
 	lda MyJoypadHeld,x
@@ -432,38 +502,39 @@ AccelByData:
 	pla
 	sta Player_X_Speed,x
 
-	lda Player_Y_Speed_Exag,x
+	lda Player_Y_Speed,x
 	cmp SoftCapYData,y ;exceed soft cap?
-	bpl @IsSoftexceed ;yes, don't accel
-	pha 
+	bpl @IsSoftExceed
+@NotSoftExceed:
+	pha
 	lda Player_Y_MoveForce,x
 	clc
-	adc AccelYSubData,y
+	adc AccelYLowData,y
 	sta Player_Y_MoveForce,x
 	pla
-	adc AccelYData,y
-@IsSoftexceed:
+	adc AccelYHighData,y
+@IsSoftExceed:
 	cmp HardCapYData,y	;min(y speed, y hard cap)
-	bmi @NotHardexceed
+	bmi @NotHardExceed
 	lda #$00
 	sta Player_Y_MoveForce,x
 	lda HardCapYData,y
-@NotHardexceed:
+@NotHardExceed:
 
-	sta Player_Y_Speed_Exag,x	;debugging purposes
-	lsr
-	ror Player_Y_MoveForce,x
-	lsr
-	ror Player_Y_MoveForce,x
-	lsr
-	ror Player_Y_MoveForce,x
-	lsr
-	ror Player_Y_MoveForce,x
-	cmp #$08
-	bmi @Positive
-	ora #$f0
-@Positive:
 	sta Player_Y_Speed,x
+	;lsr
+	;ror Player_Y_MoveForce,x
+	;lsr
+	;ror Player_Y_MoveForce,x
+	;lsr
+	;ror Player_Y_MoveForce,x
+	;lsr
+	;ror Player_Y_MoveForce,x
+	;bit YSpeedBit9
+	;bpl @Positive
+	;ora #$f0
+;@Positive:
+	;sta Player_Y_Speed,x
 	
 	jsr MovePlayerHorizontally
 	sta Player_X_Scroll
@@ -513,27 +584,29 @@ vvv = $80	;dummy extreme value for debugging
 ;CarryXData:
 	;.byte vvv, vvv, vvv, vvv, vvv, vvv, vvv, vvv, $02, vvv, vvv, vvv, vvv, vvv, vvv, vvv, vvv
 SetXData:
-	.byte vvv, vvv, vvv, vvv, vvv, vvv, 8, vvv, vvv, vvv, vvv, vvv, vvv, vvv, vvv, 32, 48
+	.byte vvv, vvv, vvv, vvv, vvv, vvv, 8, vvv, vvv, vvv, vvv, vvv, vvv, vvv, vvv, 32, vvv, 48
 AccelXData:
-	.byte 1, 1, 1, vvv, 1, 1, 2, 2, 0, 1, 0, 1, 0, 1, 0, 2, 0
+	.byte 1, 1, 1, vvv, 1, 1, 2, 2, 0, 1, 0, 1, 0, 1, 0, 2, 256-2, 0
 NeutralXData:
-	.byte 256-1, 0, 0, vvv, 0, 0, 1, 0, 256-3, 256-1, 0, 0, 0, 0, 0, 2, 0
+	.byte 256-1, 0, 0, vvv, 0, 0, 1, 0, 256-3, 256-1, 0, 0, 0, 0, 0, 2, 256-4, 0
 DecelXData:
-	.byte 256-2, 256-2, 256-2, vvv, 256-1, 256-2, 256-1, 256-1, 256-3, 256-1, 0, 256-2, 0, 256-1, 0, 256-1, 0
+	.byte 256-2, 256-2, 256-2, vvv, 256-1, 256-2, 256-1, 256-1, 256-3, 256-1, 0, 256-2, 0, 256-1, 0, 256-1, 256-4, 0
 MinCapXData:
-	.byte 0, 0, 0, vvv, 0, 0, 8, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0
+	.byte 0, 0, 0, vvv, 0, 0, 8, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0
 SoftCapXData:
-	.byte 40, 40, 40, vvv, 24, 40, 32, 48, 4, 4, 0, 40, 0, 24, 0, 48, 25
+	.byte 40, 40, 40, vvv, 24, 40, 32, 48, 4, 4, 0, 40, 0, 24, 0, 48, 48, 25
 HardCapXData:
-	.byte 64, 64, 64, vvv, 48, 64, 32, 48, 4, 4, 0, 64, 0, 48, 0, 48, 48
+	.byte 64, 64, 64, vvv, 48, 64, 32, 48, 4, 4, 0, 64, 0, 48, 0, 48, 64, 48
 ;FromXData:
-SetYData:
-	.byte vvv, 256-70, vvv, vvv, 256-40, 256-110, 256-32, 256-20, 20, vvv, 256-110, 16, vvv, vvv, 256-48, 0
-AccelYData:
-	.byte 0, 2, 9, vvv, 1, 1, 4, 1, 2, 10, 0, 4, 8, 256-4, 0, 8, 0
-AccelYSubData:	;just for keeping the original jump height!
-	.byte 0, 0, 0, vvv, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0	;AccelYSubData[1]=128
+SetYHighData:
+	.byte vvv, $fb, vvv, vvv, $fd, vvv, $f8, $fe, $fe, $01, vvv, $f8, $01, vvv, vvv, $fd, vvv, $00
+SetYLowData:
+	.byte vvv, $78, vvv, vvv, $70, vvv, $e0, $00, $a0, $40, vvv, $e0, $00, vvv, vvv, $00, vvv, $00
+AccelYHighData:
+	.byte 0, 0, 0, vvv, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0
+AccelYLowData:
+	.byte $00, $28, $90, vvv, $10, $10, $40, $10, $20, $a0, $00, $40, $80, $c0, $00, $80, $00, $00
 SoftCapYData:
-	.byte 0, 64, 64, vvv, 32, 48, 64, 48, 0, 80, 0, 64, 64, 32, 0, 64, 0
+	.byte 0, 4, 4, vvv, 2, 3, 4, 3, 0, 5, 0, 4, 4, 2, 0, 4, 0, 0
 HardCapYData:
-	.byte 0, 64, 64, vvv, 32, 64, 64, 48, 0, 80, 0, 64, 64, 64, 0, 64, 0
+	.byte 0, 4, 4, vvv, 2, 4, 4, 3, 0, 5, 0, 4, 4, 4, 0, 4, 0, 0

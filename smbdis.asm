@@ -4170,6 +4170,7 @@ ExitNA:   rts
 ;-------------------------------------------------------------------------------------
 
 .include "PlayerMovementSubs.asm"
+.include "LandingExtraRoutine.asm"
 .if 0	;mizu
 PlayerMovementSubs:
            ;lda #$00                  ;set A to init crouch flag by default
@@ -4311,6 +4312,7 @@ InitCSTimer: sta ClimbSideTimer       ;initialize timer here
 ;-------------------------------------------------------------------------------------
 ;$00 - used to store offset to friction data
 ;mizu
+.if 0
 JumpMForceData:
       ;.byte $20, $20, $1e, $28, $28, $0d, $04
 
@@ -4371,7 +4373,7 @@ CheckForJumping:
         beq ProcJumping
 NoJump: jmp X_Physics             ;otherwise, jump to something else
 
-ProcJumping:.if 0	;mizu
+ProcJumping:;.if 0	;mizu
            lda Player_State           ;check player state
            beq InitJS                 ;if on the ground, branch
            lda SwimmingFlag           ;if swimming flag not set, jump to do something else
@@ -4436,7 +4438,7 @@ PJumpSnd:  lda #Sfx_BigJump           ;load big mario's jump sound by default
            beq SJumpSnd
            lda #Sfx_SmallJump         ;if not, load small mario's jump sound
 SJumpSnd:  sta Square1SoundQueue      ;store appropriate jump sound in square 1 sfx queue
-.endif	;mizu
+;.endif	;mizu
 X_Physics: ldy #$00
            sty $00                    ;init value here
            lda Player_State           ;if mario is on the ground, branch
@@ -4487,7 +4489,7 @@ GetXPhy2:  lda MaxRightXSpdData,y     ;get maximum speed to the right
            asl FrictionAdderLow       ;otherwise shift d7 of friction adder low into carry
            rol FrictionAdderHigh      ;then rotate carry onto d0 of friction adder high
 ExitPhy:   rts                        ;and then leave
-;.endif
+.endif
 ;-------------------------------------------------------------------------------------
 
 PlayerAnimTmrData:
@@ -10285,7 +10287,11 @@ DoFootCheck:
       ldy $eb                    ;get block buffer adder offset
       lda Player_Y_Position
       cmp #$cf                   ;check to see how low player is
-      bcs DoPlayerSideCheck      ;if player is too far down on screen, skip all of this
+	  
+      bcc @ReverseBranch      ;if player is too far down on screen, skip all of this
+	  jmp DoPlayerSideCheck	;mizu: long branch
+@ReverseBranch:
+
       jsr BlockBufferColli_Feet  ;do player-to-bg collision detection on bottom left of player
       jsr CheckForCoinMTiles     ;check to see if player touched coin with their left foot
       bcs AwardTouchedCoin       ;if so, branch to some other part of code
@@ -10325,13 +10331,18 @@ LandPlyr: jsr ChkForLandJumpSpring   ;do sub to check for jumpspring metatiles a
           lda #$f0
           and Player_Y_Position      ;mask out lower nybble of player's vertical position
           sta Player_Y_Position      ;and store as new vertical position to land player properly
+		  
+		  lda #$00
+		  sta Player_YMF_Dummy	;mizu
+		  
           jsr HandlePipeEntry        ;do sub to process potential pipe entry
           lda #$00
           sta Player_Y_Speed         ;initialize vertical speed and fractional
           sta Player_Y_MoveForce     ;movement force to stop player's vertical movement
           sta StompChainCounter      ;initialize enemy stomp counter
-InitSteP: lda #$00
-          sta Player_State           ;set player's state to normal
+InitSteP: ;lda #$00
+          ;sta Player_State           ;set player's state to normal
+		  jsr LandingExtraRoutine	;mizu
 
 DoPlayerSideCheck:
       ldy $eb       ;get block buffer adder offset
