@@ -111,15 +111,23 @@ StateSubNormal:
 	lda Player_XSpeedAbsolute	;is crouch => either backflip, crouch jump or long jump
 	cmp #$24	;lj speed threshold
 	bmi @NotLJ
+	lda #$01
+	sta CrouchingFlag,x	;"reset" the crouching timer but still crouch
 	lda #StateLJ	;is lj
 	sta Player_State,x	;update state
 	jmp NewStateY
 	
 @NotLJ:
+	cmp #$00	;cmp #$00 is stupid
 	bne @NotBackflip	;speed must be 0
 	lda CrouchingFlag,x	;and crouching for >48 frames
 	cmp #$30			;to backflip
+	lda #$01
+	sta CrouchingFlag,x	;"reset" the crouching timer but still crouch and doing this early since c isn't affected by lda
 	bcc @NotBackflip	;bcc -> siged cmp
+	lda PlayerFacingDir,x
+	eor #%00000011	;backwards
+	sta Player_MovingDir,x
 	lda #StateBackflip	;is backflip
 	sta Player_State,x	;update state
 	jsr NewStateX
@@ -165,6 +173,7 @@ ChkGP:
 	lda MyJoypadPressed,x
 	and #Down_Dir
 	beq @NotGP
+	jsr ChkDive1
 	pla	;not going back!
 	pla
 	lda #$10
@@ -174,6 +183,34 @@ ChkGP:
 	jsr NewStateShiftX
 	jmp NewStateY
 @NotGP:
+	rts
+	
+ChkDive:
+	lda MyJoypadHeld,x
+	and #Down_Dir
+	beq NotDive	;to jsr
+ChkDive1:
+	lda MyJoypadPressed,x
+	and #B_Button
+	beq NotDive
+	
+	pla
+	pla
+	
+	lda PlayerFacingDir,x	;dive in facing dir!
+	sta Player_MovingDir,x
+	
+	lda AreaType	;todo: check state/tile instead of area type
+	beq @Underwater	;0 -> underwater
+	lda #StateDive
+	bne @SetState
+@Underwater:
+	lda #StateUnderwaterDive
+@SetState:
+	sta Player_State,x
+	jsr NewStateX
+	jmp NewStateY
+NotDive:
 	rts
 	
 StateSubJumping:
@@ -228,29 +265,6 @@ StateSubLJ:
 StateSubDive:
 	rts	;cannot transit to another state. maybe bonk?
 	
-ChkDive:
-	lda MyJoypadPressed,x
-	and #B_Button
-	beq @NotDive
-	lda MyJoypadHeld,x
-	and #Down_Dir
-	beq @NotDive
-	
-	lda PlayerFacingDir,x	;dive in facing dir!
-	sta Player_MovingDir,x
-	
-	lda AreaType	;todo: check state/tile instead of area type
-	beq @Underwater	;0 -> underwater
-	lda #StateDive
-	bne @SetState
-@Underwater:
-	lda #StateUnderwaterDive
-@SetState:
-	sta Player_State,x
-	jsr NewStateX
-	jmp NewStateY
-@NotDive:
-	rts
 	
 StateSubGPReady:
 	lda MyJoypadHeld,x
@@ -437,6 +451,9 @@ AccelByData:
 	lda Player_XSpeedAbsolute
 	cmp SoftCapXData,y	;exceed soft cap?
 	bpl @IsNeutral	;yes, use neutral instead (unaffect in air, slow down on ground)
+	lda CrouchingFlag,x
+	cmp #$03	;you can crouch for 3-1 frames and not lose speed!
+	bcs @IsNeutral
 	lda AccelXData,y	;otherwise accel as normal
 	bvc @ApplyAccel
 @NotAccel:
@@ -584,13 +601,13 @@ vvv = $80	;dummy extreme value for debugging
 ;CarryXData:
 	;.byte vvv, vvv, vvv, vvv, vvv, vvv, vvv, vvv, $02, vvv, vvv, vvv, vvv, vvv, vvv, vvv, vvv
 SetXData:
-	.byte vvv, vvv, vvv, vvv, vvv, vvv, 8, vvv, vvv, vvv, vvv, vvv, vvv, vvv, vvv, 32, vvv, 48
+	.byte vvv, vvv, vvv, vvv, vvv, vvv, 8, vvv, vvv, vvv, vvv, vvv, vvv, vvv, vvv, $0f, vvv, 48
 AccelXData:
-	.byte 1, 1, 1, vvv, 1, 1, 2, 2, 0, 1, 0, 1, 0, 1, 0, 2, 256-2, 0
+	.byte 1, 1, 1, vvv, 1, 1, 2, 2, 0, 1, 0, 1, 0, 1, 0, 3, 256-2, 0
 NeutralXData:
-	.byte 256-1, 0, 0, vvv, 0, 0, 1, 0, 256-3, 256-1, 0, 0, 0, 0, 0, 2, 256-4, 0
+	.byte 256-1, 0, 0, vvv, 0, 0, 1, 0, 256-3, 256-1, 0, 0, 0, 0, 0, 3, 256-4, 0
 DecelXData:
-	.byte 256-2, 256-2, 256-2, vvv, 256-1, 256-2, 256-1, 256-1, 256-3, 256-1, 0, 256-2, 0, 256-1, 0, 256-1, 256-4, 0
+	.byte 256-2, 256-2, 256-2, vvv, 256-1, 256-2, 256-1, 256-1, 256-3, 256-1, 0, 256-2, 0, 256-1, 0, 256-2, 256-4, 0
 MinCapXData:
 	.byte 0, 0, 0, vvv, 0, 0, 8, 8, 0, 0, 0, 0, 0, 0, 0, 8, 0, 0
 SoftCapXData:
@@ -605,8 +622,8 @@ SetYLowData:
 AccelYHighData:
 	.byte 0, 0, 0, vvv, 0, 0, 0, 0, 0, 0, 0, 0, 0, 255, 0, 0, 0, 0
 AccelYLowData:
-	.byte $00, $28, $90, vvv, $10, $10, $40, $10, $20, $a0, $00, $40, $80, $c0, $00, $80, $00, $00
+	.byte $00, $28, $90, vvv, $10, $10, $40, $10, $20, $a0, $00, $40, $80, $c0, $00, $80, $80, $00
 SoftCapYData:
-	.byte 0, 4, 4, vvv, 2, 3, 4, 3, 0, 5, 0, 4, 4, 2, 0, 4, 0, 0
+	.byte 0, 4, 4, vvv, 2, 3, 4, 3, 0, 5, 0, 4, 4, 2, 0, 4, 4, 0
 HardCapYData:
-	.byte 0, 4, 4, vvv, 2, 4, 4, 3, 0, 5, 0, 4, 4, 4, 0, 4, 0, 0
+	.byte 0, 4, 4, vvv, 2, 4, 4, 3, 0, 5, 0, 4, 4, 4, 0, 4, 4, 0

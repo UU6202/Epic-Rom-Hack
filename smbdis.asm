@@ -162,7 +162,7 @@ DecTimers:     ldx #$14                  ;load end offset for end of frame timer
                bpl DecTimersLoop         ;if not expired, only frame timers will decrement
                lda #$14
                sta IntervalTimerControl  ;if control for interval timers expired,
-               ldx #$23                  ;interval timers will decrement along with frame timers
+               ldx #$22                  ;interval timers will decrement along with frame timers	;mizu: $23 actually overshoot 1 to $07a3, which I am using
 DecTimersLoop: lda Timers,x              ;check current timer
                beq SkipExpTimer          ;if current timer expired, branch to skip,
                dec Timers,x              ;otherwise decrement the current timer
@@ -10286,12 +10286,8 @@ NYSpd: lda #$01               ;set player's vertical speed to nullify
 DoFootCheck:
       ldy $eb                    ;get block buffer adder offset
       lda Player_Y_Position
-      cmp #$cf                   ;check to see how low player is
-	  
-      bcc @ReverseBranch      ;if player is too far down on screen, skip all of this
-	  jmp DoPlayerSideCheck	;mizu: long branch
-@ReverseBranch:
-
+      cmp #$cf                   ;check to see how low player is	;todo
+      bcs DoPlayerSideCheck      ;if player is too far down on screen, skip all of this
       jsr BlockBufferColli_Feet  ;do player-to-bg collision detection on bottom left of player
       jsr CheckForCoinMTiles     ;check to see if player touched coin with their left foot
       bcs AwardTouchedCoin       ;if so, branch to some other part of code
@@ -10357,7 +10353,7 @@ SideCheckLoop:
        lda Player_Y_Position
        cmp #$20                  ;check player's vertical position
        bcc BHalf                 ;if player is in status bar area, branch ahead to skip this part
-       cmp #$e4
+       cmp #$e4	;todo
        bcs ExSCH                 ;branch to leave if player is too far down
        jsr BlockBufferColli_Side ;do player-to-bg collision detection on one half of player
        beq BHalf                 ;branch ahead if nothing found
@@ -10637,7 +10633,7 @@ ExPipeE: rts                       ;leave!!!
 
 ImpedePlayerMove:
        lda #$00                  ;initialize value here
-       ldy Player_X_Speed        ;get player's horizontal speed
+       ldy Player_X_Speed        ;get player's horizontal speed	;todo: nonono, don't get the speed
        ldx $00                   ;check value set earlier for
        dex                       ;left side collision
        bne RImpd                 ;if right side collision, skip this part
@@ -10652,7 +10648,7 @@ RImpd: ldx #$02                  ;return $02 to X
        lda #$01                  ;otherwise load A with value to be used here
 NXSpd: ldy #$10
        sty SideCollisionTimer    ;set timer of some sort
-       ldy #$00
+       ldy #$00	;todo: side collision here!
        sty Player_X_Speed        ;nullify player's horizontal speed
        cmp #$00                  ;if value set in A not set to $ff,
        bpl PlatF                 ;branch ahead, do not decrement Y
